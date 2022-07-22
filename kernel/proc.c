@@ -288,7 +288,7 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
-
+  np->mask = p->mask;
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
@@ -653,4 +653,32 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+//lab 2 to get the number of processes
+uint64
+number_process(void)
+{
+  static char *states[] = {
+  [UNUSED]    "unused",
+  [SLEEPING]  "sleep ",
+  [RUNNABLE]  "runble",
+  [RUNNING]   "run   ",
+  [ZOMBIE]    "zombie"
+  };
+  struct proc *p;
+  //char *state;
+  int count=0;
+  for(p = proc; p < &proc[NPROC]; p++){
+    if(p->state == UNUSED)
+      continue;
+    if(p->state >= 0 && p->state < NELEM(states) && states[p->state]){
+      count++;
+    }
+    else{
+      count++;
+    }
+    
+  }
+  return count;
 }
