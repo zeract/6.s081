@@ -432,3 +432,49 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+void vmprint_helper(pagetable_t p ,int n){
+  if(n==1){
+    printf("page table %p\n",p);
+  }
+  for(int i=0;i<512;i++){
+    pte_t pte = p[i];
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte);
+      for(int j=0;j<n;j++){
+        printf("..");
+      }
+      printf("%d: pte %p pa %p\n",i,pte,child);
+      vmprint_helper((pagetable_t)child,n+1);
+      
+    }
+    else if(pte&PTE_V){   //leaf
+      for(int j=0;j<n;j++){
+        printf("..");
+      }
+      printf("%d: pte %p pa %p\n",i,pte,PTE2PA(pte));
+    } 
+  }
+}
+//lab3 pgtbl print pagetable
+void vmprint(pagetable_t p){
+  vmprint_helper(p,1);
+  /*
+  for(int i=0;i<512;i++){
+    pte_t pte = p[i];
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte);
+      printf("..");
+      printf("%d: pte %p pa %p\n",i,pte,child);
+      vmprint((pagetable_t)child);
+      
+    }
+    else if(pte&PTE_V){   //leaf
+      
+      printf("%d: pte %p pa %p\n",i,pte,PTE2PA(pte));
+    } 
+  }
+  */
+}

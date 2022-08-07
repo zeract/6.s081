@@ -7,6 +7,7 @@
 #include "spinlock.h"
 #include "proc.h"
 
+
 uint64
 sys_exit(void)
 {
@@ -81,7 +82,44 @@ int
 sys_pgaccess(void)
 {
   // lab pgtbl: your code here.
-  return 0;
+  uint64 p;
+  int n;
+  uint64 u;
+  //char bitmask[32];
+  if(argaddr(0,&p)<0){
+    return -1;
+  }
+  if(argint(1,&n)<0){
+    return -1;
+  }
+  if(argaddr(2,&u)<0){
+    return -1;
+  }
+  
+  //get the address of the pte in the pagetable that corresponds to virtual address va
+  pte_t *a;
+  a=walk(myproc()->pagetable,p,0);
+  unsigned int mask=0;
+  //limit the max pages
+  if(n>32){
+    n=32;
+  }
+  
+  for(int i=0;i<n;i++){
+    pte_t *pte = a+i;
+
+    if(*pte & PTE_A){
+      //bitmask[31-i] = 1;
+      mask = mask | (1<<i);
+      *pte = *pte & (~PTE_A); //clear PTE_A || use ~ to negetive PTE_A  can't use !
+    }
+  }
+  
+  if(copyout(myproc()->pagetable,u,(char *)&mask,sizeof(mask))<0){
+    return -1;
+  }
+  
+  return 1;
 }
 #endif
 
