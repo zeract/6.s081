@@ -77,9 +77,32 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
     yield();
-
+    p->current = (p->current+1);
+    if(p->current==p->interval&&p->on_handler==0){
+      p->current=0;
+      p->on_handler=1;
+      //trap_handler=1;
+      p->save_epc = p->trapframe->epc;
+      p->trapframe->epc = p->handler;
+      p->save_a0 = p->trapframe->a0 ;
+      p->save_a1 = p->trapframe->a1;
+      p->save_a2 = p->trapframe->a2;
+      p->save_a3 = p->trapframe->a3;
+      p->save_a4 = p->trapframe->a4;
+      p->save_a5 = p->trapframe->a5;
+      p->save_a6 = p->trapframe->a6;
+      p->save_a7 = p->trapframe->a7;
+      p->save_s1 = p->trapframe->s1;
+      p->save_s0 = p->trapframe->s0;
+      p->save_ra = p->trapframe->ra;
+      p->save_sp = p->trapframe->sp;
+      //((void (*) ())p->handler)();
+    }
+    
+    
+  }
   usertrapret();
 }
 

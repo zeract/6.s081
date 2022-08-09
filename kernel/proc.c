@@ -134,6 +134,8 @@ found:
     release(&p->lock);
     return 0;
   }
+  p->current = 0;//lab4 traps
+  p->on_handler = 0;//lab4 traps  judge the handler is on or off
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
