@@ -303,20 +303,26 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
-
+  //char *mem;
+  
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
+    if(*pte & PTE_W){
+      *pte = (*pte) & (~PTE_W);
+    }
+    *pte = *pte | PTE_cow;
     pa = PTE2PA(*pte);
+    //count[pa/4096] = count[pa/4096]+1; //lab5 cow
+    plus_count(pa);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    //if((mem = kalloc()) == 0)
+      //goto err;
+    //memmove(mem, (char*)pa, PGSIZE);
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){
+      //kfree(mem);
       goto err;
     }
   }
@@ -350,13 +356,40 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+    if(va0>=MAXVA){
+      return -1;
+    }
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
-    n = PGSIZE - (dstva - va0);
-    if(n > len)
-      n = len;
-    memmove((void *)(pa0 + (dstva - va0)), src, n);
+    pte_t *pte;
+    if((pte = walk(pagetable, va0, 0)) == 0)
+      panic("copyout: pte should exist");
+    if(*pte&PTE_cow){
+      uint64 pa1 = (uint64)kalloc();
+      if(pa1==0){
+        printf("copyout: kalloc error\n");
+        return -1;
+      }
+      else{
+        *pte = (*pte) | PTE_W;
+        memmove((void *)pa1,(void *)pa0,PGSIZE);
+        kfree((void *)pa0);
+        
+        *pte = PA2PTE(pa1)| PTE_FLAGS(*pte);
+        n = PGSIZE - (dstva - va0);
+        if(n > len)
+          n = len;
+        memmove((void *)(pa1 + (dstva - va0)), src, n);
+      }
+        
+    }else{
+      n = PGSIZE - (dstva - va0);
+      if(n > len)
+        n = len;
+      memmove((void *)(pa0 + (dstva - va0)), src, n);
+    }
+    
 
     len -= n;
     src += n;
