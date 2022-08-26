@@ -17,7 +17,11 @@ struct entry *table[NBUCKET];
 int keys[NKEYS];
 int nthread = 1;
 
-
+pthread_mutex_t lock;
+pthread_mutex_t lock1;
+pthread_mutex_t lock2;
+pthread_mutex_t lock3;
+pthread_mutex_t lock4;
 double
 now()
 {
@@ -40,34 +44,38 @@ static
 void put(int key, int value)
 {
   int i = key % NBUCKET;
-
   // is the key already present?
   struct entry *e = 0;
+  
   for (e = table[i]; e != 0; e = e->next) {
+    
     if (e->key == key)
       break;
   }
+  
   if(e){
     // update the existing key.
     e->value = value;
   } else {
     // the new is new.
+    
     insert(key, value, &table[i], table[i]);
   }
-
+  
 }
 
 static struct entry*
 get(int key)
 {
   int i = key % NBUCKET;
-
-
+  
   struct entry *e = 0;
+  //pthread_mutex_lock(&lock);
   for (e = table[i]; e != 0; e = e->next) {
+    
     if (e->key == key) break;
   }
-
+  //pthread_mutex_unlock(&lock);
   return e;
 }
 
@@ -78,7 +86,31 @@ put_thread(void *xa)
   int b = NKEYS/nthread;
 
   for (int i = 0; i < b; i++) {
-    put(keys[b*n + i], n);
+    if((keys[b*n + i])%NBUCKET==0){
+      pthread_mutex_lock(&lock);
+      put(keys[b*n + i], n);
+      pthread_mutex_unlock(&lock);
+    }
+    else if((keys[b*n + i])%NBUCKET==1){
+      pthread_mutex_lock(&lock1);
+      put(keys[b*n + i], n);
+      pthread_mutex_unlock(&lock1);
+    }
+    else if((keys[b*n + i])%NBUCKET==2){
+      pthread_mutex_lock(&lock2);
+      put(keys[b*n + i], n);
+      pthread_mutex_unlock(&lock2);
+    }
+    else if((keys[b*n + i])%NBUCKET==3){
+      pthread_mutex_lock(&lock3);
+      put(keys[b*n + i], n);
+      pthread_mutex_unlock(&lock3);
+    }
+    else if((keys[b*n + i])%NBUCKET==4){
+      pthread_mutex_lock(&lock4);
+      put(keys[b*n + i], n);
+      pthread_mutex_unlock(&lock4);
+    }
   }
 
   return NULL;
@@ -104,8 +136,11 @@ main(int argc, char *argv[])
   pthread_t *tha;
   void *value;
   double t1, t0;
-
-
+  pthread_mutex_init(&lock,NULL);
+  pthread_mutex_init(&lock1,NULL);
+  pthread_mutex_init(&lock2,NULL);
+  pthread_mutex_init(&lock3,NULL);
+  pthread_mutex_init(&lock4,NULL);
   if (argc < 2) {
     fprintf(stderr, "Usage: %s nthreads\n", argv[0]);
     exit(-1);
