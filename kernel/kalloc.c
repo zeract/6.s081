@@ -21,12 +21,14 @@ struct run {
 struct {
   struct spinlock lock;
   struct run *freelist;
-} kmem;
+} kmem,kmem1,kmem2;
 
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  initlock(&kmem1.lock,"kmem");
+  initlock(&kmem2.lock,"kmem");
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -53,13 +55,31 @@ kfree(void *pa)
 
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
+  push_off();
+  int id = cpuid();
+  pop_off();
+  if(id==0){
+    r = (struct run*)pa;
 
-  r = (struct run*)pa;
-
-  acquire(&kmem.lock);
-  r->next = kmem.freelist;
-  kmem.freelist = r;
-  release(&kmem.lock);
+    acquire(&kmem.lock);
+    r->next = kmem.freelist;
+    kmem.freelist = r;
+    release(&kmem.lock);
+  }
+  else if(id==1){
+    r = (struct run*)pa;
+    acquire(&kmem1.lock);
+    r->next = kmem1.freelist;
+    kmem1.freelist = r;
+    release(&kmem1.lock);
+  }
+  else{
+    r = (struct run*)pa;
+    acquire(&kmem2.lock);
+    r->next = kmem2.freelist;
+    kmem2.freelist = r;
+    release(&kmem2.lock);
+  }
 }
 
 // Allocate one 4096-byte page of physical memory.
@@ -69,14 +89,102 @@ void *
 kalloc(void)
 {
   struct run *r;
-
-  acquire(&kmem.lock);
+  push_off();
+  int id = cpuid();
+  pop_off();
+  //printf("%d",id);
+  if(id==0){
+    acquire(&kmem.lock);
   r = kmem.freelist;
+  if(!r){
+    if(kmem1.freelist){
+      acquire(&kmem1.lock);
+      r = kmem1.freelist;
+      kmem1.freelist = r->next;
+      release(&kmem1.lock);
+      release(&kmem.lock);
+      memset((char*)r,5,PGSIZE);
+      return (void*)r;
+    }
+    if(kmem2.freelist){
+      acquire(&kmem2.lock);
+      r = kmem2.freelist;
+      kmem2.freelist = r->next;
+      release(&kmem2.lock);
+      release(&kmem.lock);
+      memset((char*)r,5,PGSIZE);
+      return (void*)r;
+    }
+  }
   if(r)
     kmem.freelist = r->next;
+  
   release(&kmem.lock);
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+  }
+  else if(id==1){
+    acquire(&kmem1.lock);
+  r = kmem1.freelist;
+  if(!r){
+    if(kmem.freelist){
+      acquire(&kmem.lock);
+      r = kmem.freelist;
+      kmem.freelist = r->next;
+      release(&kmem.lock);
+      release(&kmem1.lock);
+      memset((char*)r,5,PGSIZE);
+      return (void*)r;
+    }
+    if(kmem2.freelist){
+      acquire(&kmem2.lock);
+      r = kmem2.freelist;
+      kmem2.freelist = r->next;
+      release(&kmem2.lock);
+      release(&kmem1.lock);
+      memset((char*)r,5,PGSIZE);
+      return (void*)r;
+    }
+  }
+  if(r)
+    kmem1.freelist = r->next;
+  release(&kmem1.lock);
+
+  if(r)
+    memset((char*)r, 5, PGSIZE); // fill with junk
+  return (void*)r;
+  }
+  else{
+    acquire(&kmem2.lock);
+  r = kmem2.freelist;
+  if(!r){
+    if(kmem.freelist){
+      acquire(&kmem.lock);
+      r = kmem.freelist;
+      kmem.freelist = r->next;
+      release(&kmem.lock);
+      release(&kmem2.lock);
+      memset((char*)r,5,PGSIZE);
+      return (void*)r;
+    }
+    if(kmem1.freelist){
+      acquire(&kmem1.lock);
+      r = kmem1.freelist;
+      kmem1.freelist = r->next;
+      release(&kmem1.lock);
+      release(&kmem2.lock);
+      memset((char*)r,5,PGSIZE);
+      return (void*)r;
+    }
+  }
+  if(r)
+    kmem2.freelist = r->next;
+  release(&kmem2.lock);
+
+  if(r)
+    memset((char*)r, 5, PGSIZE); // fill with junk
+  return (void*)r;
+  }
 }
