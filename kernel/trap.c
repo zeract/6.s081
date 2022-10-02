@@ -5,6 +5,10 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
+#include "fcntl.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -69,15 +73,48 @@ usertrap(void)
     // ok
   }else if(r_scause()==13||r_scause()==15){
     uint64 address = r_stval();
+    if(address>=p->sz || address<p->trapframe->sp){
+      p->killed=1;
+    }else{
     char* pa;
-    if(PGROUNDUP(p->trapframe->sp) - 1 < address && address < p->sz &&
-      (pa = kalloc()) != 0) {
-        memset(pa, 0, PGSIZE);
-        if(mappages(p->pagetable, PGROUNDDOWN(address), PGSIZE, (uint64)pa, PTE_R | PTE_W | PTE_X | PTE_U) != 0) {
-          kfree(pa);
-          p->killed = 1;
+    int k=0;
+    for(int i=0;i<VMAMAX;i++){
+      if(p->vma[i].use){
+        if(p->vma[i].address <= address&& p->vma[i].address+p->vma[i].length-1>=address){
+            k=i;
+            break;
         }
+      }
     }
+    if(k==VMAMAX){
+      p->killed=1;
+    }
+    else{
+      struct file *f = p->vma[k].vfile;
+      struct inode *ip = f->ip;
+      pa =  kalloc();
+      if(pa==0){
+        p->killed=1;
+      }
+      else{
+        if(PGROUNDUP(p->trapframe->sp) - 1 < address && address < p->sz &&address<MAXVA) {
+          memset(pa, 0, PGSIZE);
+          ilock(ip);
+          readi(ip, 0, (uint64)pa,address-p->vma[k].address, PGSIZE);   //the offset has some problem
+          iunlock(ip);
+          if(mappages(p->pagetable, PGROUNDDOWN(address), PGSIZE, (uint64)pa, p->vma[k].flag) != 0) {
+            kfree(pa);
+            p->killed = 1;
+          }
+          
+      }
+        else{
+          p->killed=1;
+        }
+      }
+    }
+    }
+    
   } 
   else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);

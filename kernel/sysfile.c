@@ -486,9 +486,94 @@ sys_pipe(void)
 }
 uint64
 sys_mmap(void){
-  return 0;
+  uint64 address;
+  int length;
+  int prot;
+  int flags;
+  int fd;
+  int offset;
+  int flag = PTE_U;
+  struct file *vfile;
+  struct proc *p = myproc();
+  if(argaddr(0, &address) < 0 || argint(1, &length) < 0||argint(2,&prot)<0||argint(3,&flags)<0||argfd(4,&fd,&vfile)<0||argint(5,&offset)<0){
+    return 0xffffffffffffffff;
+  }
+  if(prot&PROT_READ){
+    if(!vfile->readable) return -1;
+    flag = flag|PTE_R;
+  }
+  if(prot&PROT_WRITE){
+    if(vfile->writable==0&& flags&MAP_SHARED){
+      return 0xffffffffffffffff;
+    }
+    flag = flag|PTE_W;
+  }
+  if (prot & PROT_EXEC) {
+    flag |= PTE_X;
+  }
+  if(p->sz+length>MAXVA){
+    return 0xffffffffffffffff;
+  }
+
+  for(int i=0;i<VMAMAX;i++){
+    if(p->vma[i].use==0){
+      p->vma[i].address = p->sz;
+      p->vma[i].length = length;
+      p->vma[i].fd = fd;
+      p->vma[i].offset = offset;
+      p->vma[i].vfile = vfile;
+      p->vma[i].use=1;
+      p->vma[i].flag = flag;
+      p->vma[i].prot = flags;
+      p->vma[i].restlength = length;
+      p->sz = p->sz+length;
+      filedup(vfile);
+      return p->vma[i].address;
+    }
+  }
+  
+  return 0xffffffffffffffff;
 }
 uint64
 sys_munmap(void){
+  
+  uint64 address;
+  int length;
+  if(argaddr(0,&address)<0 || argint(1,&length)<0){
+    return -1;
+  }
+  struct proc *p = myproc();
+  int i;
+  for(i=0;i<VMAMAX;i++){
+    struct VMA v = p->vma[i];
+    if(v.use==1){
+      if(v.address<=address&&(v.address+v.length)>address)
+        break;
+    }
+  }
+  if(i==VMAMAX){
+    return -1;
+  }
+  struct VMA *v = &p->vma[i];
+  if(v->prot&MAP_SHARED){
+    filewrite(v->vfile,address,length);
+  }
+
+  uvmunmap(p->pagetable,address,length/PGSIZE,1);
+  if(v->address==address&&v->length==length){
+    fileclose(v->vfile);
+    v->use=0;
+  }
+  else if(v->address==address){
+    v->address += length;
+    v->length -= length;
+  }
+  else if(v->address+v->length==address+length){
+    v->length-=length;
+  }
+
+
   return 0;
+  
+
 }

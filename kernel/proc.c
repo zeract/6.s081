@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h" //lab10 mmap
 
 struct cpu cpus[NCPU];
 
@@ -119,7 +120,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
-
+  memset(&p->vma,0,sizeof(p->vma));
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -175,9 +176,9 @@ proc_pagetable(struct proc *p)
 
   // An empty page table.
   pagetable = uvmcreate();
-  if(pagetable == 0)
+  if(pagetable == 0){
     return 0;
-
+  }
   // map the trampoline code (for system call return)
   // at the highest user virtual address.
   // only the supervisor uses it, on the way
@@ -280,6 +281,7 @@ fork(void)
   if((np = allocproc()) == 0){
     return -1;
   }
+  
 
   // Copy user memory from parent to child.
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
@@ -289,6 +291,8 @@ fork(void)
   }
   np->sz = p->sz;
 
+  
+  
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
@@ -300,6 +304,15 @@ fork(void)
     if(p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
+
+//lab 10 mmap  copy the VMA from parent to child
+  for(int i=0;i<VMAMAX;i++){
+    if(p->vma[i].use){
+      memmove(&np->vma[i], &p->vma[i], sizeof(p->vma[i]));
+      filedup(p->vma[i].vfile);
+    }
+    
+  }
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
@@ -344,6 +357,19 @@ exit(int status)
   if(p == initproc)
     panic("init exiting");
 
+  //lab10 mmap  unmap the process's mapped regions
+  for(int i=0;i<VMAMAX;i++){
+    struct VMA v = p->vma[i];
+    if(v.use==1){
+      if(v.prot&MAP_SHARED){
+          filewrite(v.vfile,v.address,v.length);
+      }
+      uvmunmap(p->pagetable,v.address,v.length/PGSIZE,1);
+      fileclose(v.vfile);
+      v.use=0;
+    }
+  }
+
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){
     if(p->ofile[fd]){
@@ -352,6 +378,7 @@ exit(int status)
       p->ofile[fd] = 0;
     }
   }
+  
 
   begin_op();
   iput(p->cwd);
